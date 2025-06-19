@@ -5,22 +5,33 @@ mkdir -p pokemon_data
 
 # List of Pokémon
 POKEMONS=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+PIDS=()  # Array to store process IDs
 
-# Function to fetch a single Pokémon
-fetch_pokemon() {
-  local name=$1
-  curl -s "https://pokeapi.co/api/v2/pokemon/$name" -o "pokemon_data/${name}.json" || echo "Failed to fetch $name" >> errors.txt
-}
-
-# Clear previous errors
+# Clear previous error log
 > errors.txt
 
-# Fetch all in parallel
+# Fetch Pokémon data in background
+fetch_pokemon() {
+    local name=$1
+    curl -s "https://pokeapi.co/api/v2/pokemon/$name" -o "pokemon_data/${name}.json" || {
+        echo "Failed to fetch $name" >> errors.txt
+        kill $$  # Kill the main script process if a fetch fails
+    }
+}
+
+# Start each fetch in background
 for name in "${POKEMONS[@]}"; do
-  fetch_pokemon "$name" &
+    fetch_pokemon "$name" &
+    PIDS+=($!)  # Capture PID
 done
 
-# Wait for all background jobs to finish
-wait
+# Wait for all fetches to complete
+for pid in "${PIDS[@]}"; do
+    wait "$pid" || {
+        echo "A background process failed. Killing all remaining..."
+        kill "${PIDS[@]}" 2>/dev/null
+        exit 1
+    }
+done
 
-echo "✅ All Pokémon data fetched in parallel."
+echo "✅ All Pokémon data fetched successfully."
